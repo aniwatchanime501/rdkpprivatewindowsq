@@ -1,0 +1,56 @@
+name: Windows RDP
+
+on: [workflow_dispatch]
+
+jobs:
+  windows-rdp:
+    runs-on: windows-latest
+
+    steps:
+      - name: Download Ngrok
+        run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+
+      - name: Extract Ngrok
+        run: Expand-Archive ngrok.zip
+
+      - name: Auth Ngrok
+        run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Enable Remote Desktop
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+
+      - name: Enable Firewall Rule for RDP
+        run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Open RDP Port
+        run: New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
+
+      - name: Allow User for RDP
+        run: Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+
+      - name: Set User Password
+        run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+      # -------------------------------
+      # Extra installs
+      # -------------------------------
+
+      - name: Install VS Code
+        run: |
+          Invoke-WebRequest https://update.code.visualstudio.com/latest/win32-x64-user/stable -OutFile vscode.exe
+          Start-Process vscode.exe -ArgumentList "/VERYSILENT","/MERGETASKS=!runcode" -NoNewWindow -Wait
+
+      - name: Install Python 3.13
+        run: |
+          Invoke-WebRequest https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe -OutFile python_installer.exe
+          Start-Process python_installer.exe -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1" -NoNewWindow -Wait
+
+      - name: Install Python Libraries
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests beautifulsoup4 lxml selenium
+
+      - name: Create Ngrok Tunnel
+        run: .\ngrok\ngrok.exe tcp 3389 --region=us-cal-1
